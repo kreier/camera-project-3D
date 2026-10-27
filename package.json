@@ -1,6 +1,6 @@
 {
   "name": "camera-project-3d",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Browser-based real-time object detection with fast model switching for assistive vision and 3D guidance.",
   "main": "app.js",
   "scripts": {
