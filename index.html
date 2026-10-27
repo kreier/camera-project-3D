@@ -13,8 +13,8 @@
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
 
-  <!-- ONNX Runtime Web CDN (For sophisticated Objects365 models & YOLO) -->
-  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/ort.min.js"></script>
+  <!-- ONNX Runtime Web CDN (With WebGPU acceleration & WASM fallback for Objects365 & YOLO) -->
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/ort.webgpu.min.js"></script>
 </head>
 <body>
   <div class="app-layout">
@@ -25,7 +25,7 @@
         <div>
           <div style="display: flex; align-items: center; gap: 0.5rem;">
             <h1 class="logo-title">Vision3D Assistive Detector</h1>
-            <span class="version-badge" id="appVersionBadge">v0.1.1</span>
+            <span class="version-badge" id="appVersionBadge">v0.1.2</span>
           </div>
           <p class="logo-subtitle">Real-Time In-Browser Edge AI • COCO & Objects365 • 3D LIDAR Guidance</p>
         </div>
@@ -220,7 +220,7 @@
     <footer class="app-footer">
       <div class="footer-content">
         <p>
-          <strong>Camera-Project-3D v0.1.1</strong> • Assistive Guidance System using STEVAL-VL53L9 ToF 3D LIDAR & Edge Vision.
+          <strong>Camera-Project-3D v0.1.2</strong> • Assistive Guidance System using STEVAL-VL53L9 ToF 3D LIDAR & Edge Vision.
         </p>
         <p class="footer-links">
           <a href="https://github.com/kreier/camera-project-3D" target="_blank" rel="noopener">Repository</a> •

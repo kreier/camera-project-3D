@@ -1,7 +1,7 @@
 /**
  * app.js - Main Application Controller for Vision3D Assistive Detector
  * Supports COCO (80 Classes) and Objects365 (365 Classes)
- * Part of Camera-Project-3D (Version v0.1.1)
+ * Part of Camera-Project-3D (Version v0.1.2)
  */
 
 import {

@@ -1,7 +1,7 @@
 /**
  * models.js - Dual Dataset & Multi-Model Inference Engine
  * Supports COCO (80 classes) and Objects365 (365 classes)
- * Part of Camera-Project-3D (Version v0.1.1)
+ * Part of Camera-Project-3D (Version v0.1.2)
  */
 
 import { OBJECTS365_CLASSES, OBJECTS365_PRESETS } from './objects365.js';
@@ -133,21 +133,8 @@ export const DATASETS = {
     classes: OBJECTS365_CLASSES,
     presets: OBJECTS365_PRESETS,
     defaultPreset: 'focus15',
-    defaultModel: 'yolo11s_o365_fp16',
+    defaultModel: 'yolo11s_o365_fp32',
     models: [
-      {
-        id: 'yolo11s_o365_fp16',
-        dataset: 'objects365',
-        name: 'YOLO11s-O365 (FP16 Edge)',
-        family: 'onnx',
-        modelUrl: 'https://huggingface.co/wide-video/yoloe-11-Objects365-v1.0.0/resolve/main/yoloe-11s-seg-object365_fp16.onnx',
-        sizeMB: 19.3,
-        speed: 'Fast (~35-60ms)',
-        accuracy: 'High (365 Categories)',
-        description: 'Edge-optimized YOLO11 model in FP16 for rapid multi-class browser detection.',
-        recommended: true,
-        isDefault: true
-      },
       {
         id: 'yolo11s_o365_fp32',
         dataset: 'objects365',
@@ -157,7 +144,20 @@ export const DATASETS = {
         sizeMB: 38.5,
         speed: 'Balanced (~55-90ms)',
         accuracy: 'Very High (Full Precision)',
-        description: 'Full FP32 tensor precision offering stable predictions across all 365 classes.',
+        description: 'Full FP32 tensor precision offering stable predictions across all 365 classes with WebGPU/WASM compatibility.',
+        recommended: true,
+        isDefault: true
+      },
+      {
+        id: 'yolo11s_o365_fp16',
+        dataset: 'objects365',
+        name: 'YOLO11s-O365 (FP16 Edge - WebGPU Only)',
+        family: 'onnx',
+        modelUrl: 'https://huggingface.co/wide-video/yoloe-11-Objects365-v1.0.0/resolve/main/yoloe-11s-seg-object365_fp16.onnx',
+        sizeMB: 19.3,
+        speed: 'Fast (~35-60ms)',
+        accuracy: 'High (365 Categories)',
+        description: 'Edge-optimized YOLO11 model in FP16. Requires modern WebGPU browser support.',
         recommended: false,
         isDefault: false
       },
@@ -293,12 +293,11 @@ export async function loadModel(modelId, onProgress = () => {}) {
     onProgress({ status: 'downloading', text: `Downloading ${config.name} (${config.sizeMB} MB)...`, percent: 25 });
 
     try {
-      // Set execution providers: prefer webgl, fallback to wasm
-      window.ort.env.wasm.numThreads = Math.min(4, navigator.hardwareConcurrency || 2);
-      
-      const sessionOptions = {
-        executionProviders: ['webgl', 'wasm']
-      };
+      // Configure WASM environment & multithreading
+      if (window.ort.env && window.ort.env.wasm) {
+        window.ort.env.wasm.numThreads = Math.min(4, navigator.hardwareConcurrency || 2);
+        window.ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/';
+      }
 
       // Fetch model with progress monitoring
       const response = await fetch(config.modelUrl);
@@ -324,7 +323,7 @@ export async function loadModel(modelId, onProgress = () => {}) {
         });
       }
 
-      onProgress({ status: 'compiling', text: `Compiling ONNX computation graph on WebGL/WASM...`, percent: 95 });
+      onProgress({ status: 'compiling', text: `Compiling ONNX computation graph (WebGPU / WASM)...`, percent: 95 });
 
       const modelBuffer = new Uint8Array(receivedBytes);
       let offset = 0;
@@ -333,12 +332,37 @@ export async function loadModel(modelId, onProgress = () => {}) {
         offset += chunk.length;
       }
 
-      const session = await window.ort.InferenceSession.create(modelBuffer.buffer, sessionOptions);
+      // Multi-provider fallback:
+      // 1. Try WebGPU (accelerated modern shader execution, supported by ort.webgpu.min.js)
+      // 2. Fall back to WASM (CPU execution with 100% full ONNX operator & opset coverage)
+      let session = null;
+      let usedProvider = 'wasm';
+
+      if (navigator.gpu) {
+        try {
+          session = await window.ort.InferenceSession.create(modelBuffer.slice().buffer, {
+            executionProviders: ['webgpu']
+          });
+          usedProvider = 'webgpu';
+          console.log(`[ONNX] Successfully initialized ${config.name} with WebGPU backend.`);
+        } catch (gpuErr) {
+          console.warn('[ONNX] WebGPU provider initialization failed, falling back to WASM:', gpuErr);
+        }
+      }
+
+      if (!session) {
+        session = await window.ort.InferenceSession.create(modelBuffer.buffer, {
+          executionProviders: ['wasm']
+        });
+        usedProvider = 'wasm';
+        console.log(`[ONNX] Successfully initialized ${config.name} with WASM backend.`);
+      }
+
       onnxSession = session;
       currentLoadedModel = session;
       currentModelConfig = config;
 
-      onProgress({ status: 'ready', text: `${config.name} ready!`, percent: 100 });
+      onProgress({ status: 'ready', text: `${config.name} ready (${usedProvider.toUpperCase()})!`, percent: 100 });
       return { model: session, config };
     } catch (err) {
       console.warn('Direct ONNX load error:', err);

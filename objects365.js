@@ -1,6 +1,6 @@
 /**
  * objects365.js - Objects365 Class Directory and Guidance Presets
- * Part of Camera-Project-3D (Version v0.1.1)
+ * Part of Camera-Project-3D (Version v0.1.2)
  */
 
 export const OBJECTS365_CLASSES = [

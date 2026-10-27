@@ -40,8 +40,8 @@ The repository includes:
   #### Objects365 Models (365 Classes - Larger & More Sophisticated)
   | Model | Size | Engine | Latency (approx) | Best For |
   | :--- | :--- | :--- | :--- | :--- |
-  | **YOLO11s-O365 (FP16 Edge)** | ~19.3 MB | ONNX Runtime Web / WebGL | 35–60 ms | Fast edge inference on 365 categories |
-  | **YOLO11s-O365 (Full FP32)** | ~38.5 MB | ONNX Runtime Web / WebGL | 55–90 ms | High-precision predictions across all 365 classes |
+  | **YOLO11s-O365 (Full FP32)** *(Default)* | ~38.5 MB | ONNX Runtime Web / WebGPU + WASM | 45–80 ms | High-precision predictions across all 365 classes with broad browser compatibility |
+  | **YOLO11s-O365 (FP16 Edge)** | ~19.3 MB | ONNX Runtime Web / WebGPU | 25–45 ms | Fast edge inference on 365 categories (Requires WebGPU) |
   | **LW-DETR Objects365 (Transformer)** | ~56.0 MB | ONNX Runtime Web / WASM | 90–140 ms | Deformable attention transformer, eliminates NMS |
   | **Co-DETR / YOLOv8x O365 (Extra-Large SOTA)** | ~136.0 MB | High-Performance ONNX / Edge | 180–260 ms | Maximum precision for small objects (keys, stairs, power outlets) |
 
