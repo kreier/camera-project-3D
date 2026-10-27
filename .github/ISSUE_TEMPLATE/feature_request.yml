@@ -1,0 +1,33 @@
+name: Feature Request
+description: Propose a new model, class preset, or assistive guidance feature.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: Share your ideas for improving in-browser detection or 3D LIDAR guidance!
+  - type: input
+    id: title
+    attributes:
+      label: Feature Summary
+      placeholder: e.g. Add depth proxy estimation using bounding box height
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Detailed Feature Description
+      placeholder: Describe the desired behavior and how it benefits assistive guidance.
+    validations:
+      required: true
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - In-Browser Web App
+        - New Object Detection Model
+        - Assistive Audio / Haptics
+        - Python / 3D ToF LIDAR
+        - CI / CD / Agentic Automation
+    validations:
+      required: true

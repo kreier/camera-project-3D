@@ -1,0 +1,25 @@
+{
+  "name": "camera-project-3d",
+  "version": "1.0.0",
+  "description": "Browser-based real-time object detection with fast model switching for assistive vision and 3D guidance.",
+  "main": "app.js",
+  "scripts": {
+    "start": "node -e \"const http = require('http'), fs = require('fs'), path = require('path'); const mime = {'.html':'text/html','.js':'application/javascript','.css':'text/css','.json':'application/json','.png':'image/png','.jpg':'image/jpeg','.svg':'image/svg+xml','.wasm':'application/wasm','.tflite':'application/octet-stream'}; http.createServer((req,res) => { let p = path.join(__dirname, req.url === '/' ? 'index.html' : req.url.split('?')[0]); if(!fs.existsSync(p) || fs.statSync(p).isDirectory()) p = path.join(__dirname, 'index.html'); const ext = path.extname(p); res.writeHead(200, {'Content-Type': mime[ext] || 'application/octet-stream', 'Cross-Origin-Opener-Policy': 'same-origin', 'Cross-Origin-Embedder-Policy': 'require-corp', 'Access-Control-Allow-Origin': '*'}); fs.createReadStream(p).pipe(res); }).listen(3000, () => console.log('🚀 Server running at http://localhost:3000'));\"",
+    "dev": "npm start",
+    "serve": "python3 -m http.server 3000",
+    "test": "node --check app.js && node --check models.js && echo 'Syntax check passed!'",
+    "lint": "echo 'Checking file consistency...' && node --check app.js && node --check models.js"
+  },
+  "keywords": [
+    "object-detection",
+    "tensorflowjs",
+    "mediapipe",
+    "webcam",
+    "assistive-technology",
+    "github-pages",
+    "agentic-ai",
+    "computer-vision"
+  ],
+  "author": "kreier",
+  "license": "MIT"
+}

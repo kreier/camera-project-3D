@@ -1,0 +1,45 @@
+name: CI & Code Quality
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate:
+    name: Lint & Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Validate JavaScript Syntax
+        run: |
+          node --check app.js
+          node --check models.js
+          echo "JavaScript syntax check passed."
+
+      - name: Validate Python Syntax
+        run: |
+          python -m py_compile detection.py
+          echo "Python syntax check passed."
+
+      - name: Verify Web Assets Integrity
+        run: |
+          test -f index.html
+          test -f styles.css
+          test -f models.js
+          test -f app.js
+          echo "All core web files verified present."

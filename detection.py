@@ -1,44 +1,112 @@
+#!/usr/bin/env python3
+"""
+Real-time Webcam Object Detection with YOLO
+Part of the Camera-Project-3D Assistive Guidance System.
+
+Usage:
+    python detection.py [--model yolo26n.pt] [--camera 0] [--conf 0.4]
+"""
+
+import argparse
+import sys
 import cv2
-from ultralytics import YOLO
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Run real-time object detection on a webcam feed using YOLO."
+    )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default="yolo26n.pt",
+        help="Path or name of YOLO model weights (default: yolo26n.pt).",
+    )
+    parser.add_argument(
+        "--camera",
+        type=int,
+        default=0,
+        help="Webcam device index (default: 0).",
+    )
+    parser.add_argument(
+        "--conf",
+        type=float,
+        default=0.40,
+        help="Confidence threshold between 0.0 and 1.0 (default: 0.40).",
+    )
+    return parser.parse_args()
+
 
 def main():
-    # Load the lightweight YOLO26 nano model for high speed
-    # (Weights will download automatically if not already present)
-    model = YOLO("yolo26n.pt")
+    args = parse_args()
 
-    # Initialize the webcam (0 is typically the built-in default webcam)
-    cap = cv2.VideoCapture(0)
+    try:
+        from ultralytics import YOLO
+    except ImportError:
+        print(
+            "Error: ultralytics is not installed.\n"
+            "Install dependencies with: pip install -r requirements.txt",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    print(f"Loading YOLO model: {args.model} ...")
+    try:
+        # Load the model (downloads weights automatically if not locally cached)
+        model = YOLO(args.model)
+    except Exception as e:
+        print(f"Failed to load YOLO model: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    # Initialize webcam capture
+    print(f"Connecting to camera index {args.camera}...")
+    cap = cv2.VideoCapture(args.camera)
+
+    # Fallback to index 1 or 2 if index 0 fails
+    if not cap.isOpened() and args.camera == 0:
+        for fallback_idx in [1, 2]:
+            print(f"Camera index 0 not available. Trying index {fallback_idx}...")
+            cap = cv2.VideoCapture(fallback_idx)
+            if cap.isOpened():
+                print(f"Successfully connected to camera index {fallback_idx}.")
+                break
 
     if not cap.isOpened():
-        print("Error: Could not open webcam.")
-        return
+        print(
+            "Error: Could not open any webcam. Please verify camera permissions and connection.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
-    print("Starting real-time detection... Press 'q' to exit.")
+    print("Live detection started. Press 'q' in the video window to exit.")
 
-    while cap.isOpened():
-        success, frame = cap.read()
-        if not success:
-            print("Ignoring empty camera frame.")
-            break
+    try:
+        while cap.isOpened():
+            success, frame = cap.read()
+            if not success:
+                print("Warning: Received empty camera frame. Exiting loop.")
+                break
 
-        # Run YOLO inference on the current frame
-        # verbose=False keeps the terminal clean from printing per-frame logs
-        results = model(frame, verbose=False)
+            # Run YOLO inference on the current frame
+            results = model(frame, conf=args.conf, verbose=False)
 
-        # Visualize the results on the frame (draws bounding boxes & labels)
-        annotated_frame = results[0].plot()
+            # Draw bounding boxes and labels
+            annotated_frame = results[0].plot()
 
-        # Display the live annotated frame in a window
-        cv2.imshow("YOLO26 Real-Time Webcam Detection", annotated_frame)
+            # Display live annotated frame
+            cv2.imshow("Camera-Project-3D: Real-Time Detection", annotated_frame)
 
-        # Exit loop if 'q' key is pressed
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            p = 1
-            break
+            # Exit on 'q' or ESC (27)
+            key = cv2.waitKey(1) & 0xFF
+            if key in (ord("q"), ord("Q"), 27):
+                break
+    except KeyboardInterrupt:
+        print("\nInterrupted by user.")
+    finally:
+        cap.release()
+        cv2.destroyAllWindows()
+        print("Camera released. Exiting clean.")
 
-    # Release the capture and close all OpenCV windows
-    cap.release()
-    cv2.destroyAllWindows()
 
 if __name__ == "__main__":
     main()

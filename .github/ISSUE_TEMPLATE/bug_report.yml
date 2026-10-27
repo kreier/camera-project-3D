@@ -1,0 +1,39 @@
+name: Bug Report
+description: Report an issue with webcam access, browser inference, or models.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for reporting an issue! Please describe the problem below.
+  - type: input
+    id: browser
+    attributes:
+      label: Browser & Operating System
+      placeholder: e.g. Chrome 124 on Ubuntu Linux / Safari on iOS
+    validations:
+      required: true
+  - type: dropdown
+    id: model
+    attributes:
+      label: Active Model when issue occurred
+      options:
+        - MobileNet v2 Lite (Ultra Fast)
+        - MobileNet v2 Standard
+        - MobileNet v1 Deep
+        - MediaPipe EfficientDet-Lite0
+        - MediaPipe EfficientDet-Lite2
+        - Local Python YOLO
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Description of the bug
+      placeholder: What happened? What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: console_logs
+    attributes:
+      label: Browser Console Logs / Terminal Output
+      render: shell
