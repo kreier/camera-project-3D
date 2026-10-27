@@ -43,7 +43,8 @@ camera-project-3D/
 ├── index.html                    # Web app entry point (GitHub Pages root)
 ├── styles.css                    # Responsive dark glassmorphism stylesheet
 ├── app.js                        # Webcam lifecycle, render loop, TTS, UI controller
-├── models.js                     # Model registry, download manager, COCO classes
+├── models.js                     # Model registry & dual-dataset loader (COCO & Objects365)
+├── objects365.js                 # Objects365 full 365-class directory & assistive presets
 ├── package.json                  # Local development scripts & validation
 ├── detection.py                  # Python OpenCV + YOLO webcam detector
 ├── requirements.txt              # Python dependencies
@@ -84,9 +85,9 @@ Agents must verify their changes locally before submitting:
 | Action | Command | Purpose |
 | :--- | :--- | :--- |
 | **Start Local Web Server** | `npm start` or `python3 -m http.server 3000` | Serves web app at `http://localhost:3000` |
-| **Validate JavaScript** | `npm test` or `node --check app.js && node --check models.js` | Checks JS syntax |
+| **Validate JavaScript** | `npm test` or `node --check app.js && node --check models.js && node --check objects365.js` | Checks JS syntax |
 | **Validate Python** | `python3 -m py_compile detection.py` | Checks Python syntax |
-| **Run Python YOLO** | `python3 detection.py --conf 0.4` | Tests native OpenCV/YOLO pipeline |
+| **Run Python YOLO** | `python3 detection.py --dataset objects365 --conf 0.4` | Tests native OpenCV/YOLO pipeline |
 
 ---
 
@@ -102,7 +103,7 @@ Agents must verify their changes locally before submitting:
 ## 6. Definition of Done (DoD) for Agent Tasks
 
 Before closing an issue or finalizing a task:
-1. [ ] JavaScript syntax validated (`node --check app.js && node --check models.js`).
+1. [ ] JavaScript syntax validated (`node --check app.js && node --check models.js && node --check objects365.js`).
 2. [ ] Python syntax validated (`python3 -m py_compile detection.py`).
 3. [ ] No unexpected files or model binaries staged (`git status`).
 4. [ ] `.gitignore` rules respected.

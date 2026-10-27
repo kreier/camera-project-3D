@@ -3,15 +3,18 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="Agentic Browser Object Detection: Fast in-browser computer vision with selectable models and 10+ object classes for assistive guidance." />
-  <title>Vision3D: In-Browser Real-Time Object Detection</title>
+  <meta name="description" content="Vision3D: In-browser real-time edge computer vision with COCO (80 classes) and Objects365 (365 classes) for assistive guidance." />
+  <title>Vision3D: In-Browser Real-Time Object Detection (COCO & Objects365)</title>
 
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220%200%20100%20100%22><text y=%22.9em%22 font-size=%2290%22>👁️</text></svg>" />
   <link rel="stylesheet" href="styles.css" />
 
-  <!-- TensorFlow.js CDN (for instant lightweight in-browser detection) -->
+  <!-- TensorFlow.js CDN (Instant lightweight in-browser detection) -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+
+  <!-- ONNX Runtime Web CDN (For sophisticated Objects365 models & YOLO) -->
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/ort.min.js"></script>
 </head>
 <body>
   <div class="app-layout">
@@ -22,9 +25,9 @@
         <div>
           <div style="display: flex; align-items: center; gap: 0.5rem;">
             <h1 class="logo-title">Vision3D Assistive Detector</h1>
-            <span class="version-badge" id="appVersionBadge">v0.1.0</span>
+            <span class="version-badge" id="appVersionBadge">v0.1.1</span>
           </div>
-          <p class="logo-subtitle">Real-Time In-Browser Edge AI • 3D LIDAR Blind Guidance Project</p>
+          <p class="logo-subtitle">Real-Time In-Browser Edge AI • COCO & Objects365 • 3D LIDAR Guidance</p>
         </div>
       </div>
       <div class="header-actions">
@@ -49,6 +52,10 @@
           </div>
           <!-- Telemetry Badges -->
           <div class="telemetry-bar">
+            <span class="metric-pill" title="Active Dataset Mode">
+              <span class="metric-label">Dataset:</span>
+              <strong id="activeDatasetBadge" style="color: #60a5fa;">COCO (80)</strong>
+            </span>
             <span class="metric-pill" title="Frames Per Second">
               <span class="metric-label">FPS:</span>
               <strong id="fpsCounter">0</strong>
@@ -105,19 +112,31 @@
 
       <!-- Right Column: Model Selection, Filtering & Assistive Settings -->
       <aside class="controls-panel">
-        <!-- 1. Fast Model Selector Card -->
+        <!-- 1. Dataset & Model Selector Card -->
         <div class="card model-card">
           <div class="panel-header">
             <div>
-              <h2 class="panel-title">🧠 In-Browser Model Selector</h2>
-              <p class="panel-hint">Switch models on-demand. Lightest starts instantly!</p>
+              <h2 class="panel-title">🧠 Model & Dataset Selector</h2>
+              <p class="panel-hint">Switch datasets & download models on-demand</p>
             </div>
             <span class="badge badge-success" id="activeModelBadge">⚡ Lite MobileNet</span>
           </div>
 
+          <!-- Dataset Switcher Tab Bar -->
+          <div class="dataset-switcher" id="datasetSwitcher">
+            <button class="dataset-tab active" data-dataset="coco" id="tabCoco">
+              <span class="dataset-tab-icon">🟢</span>
+              <span class="dataset-tab-text">COCO (80 Classes)</span>
+            </button>
+            <button class="dataset-tab" data-dataset="objects365" id="tabObjects365">
+              <span class="dataset-tab-icon">🟣</span>
+              <span class="dataset-tab-text">Objects365 (365 Classes)</span>
+            </button>
+          </div>
+
           <!-- Model Choices List -->
           <div class="model-picker-list" id="modelPickerList">
-            <!-- Injected via JavaScript from MODEL_REGISTRY -->
+            <!-- Injected dynamically based on active dataset -->
           </div>
 
           <div class="model-status-box" id="modelStatusBox">
@@ -131,26 +150,19 @@
           <div class="panel-header">
             <div>
               <h2 class="panel-title">🎯 Object Class Filters</h2>
-              <p class="panel-hint">Filter specific classes (e.g., person, book, car, smartphone, cat, dog)</p>
+              <p class="panel-hint" id="classFilterHint">Filter specific classes (e.g., person, book, car, smartphone, cat, dog)</p>
             </div>
+            <span class="badge badge-light" id="activeClassCountBadge">10 Active</span>
           </div>
 
-          <!-- Quick Preset Buttons -->
-          <div class="preset-buttons">
-            <button class="preset-btn active" data-preset="essential10" title="Person, Smartphone, Book, Car, Cat, Dog, Chair, Bottle, Laptop, Bicycle">
-              🌟 Top 10 Focus Classes
-            </button>
-            <button class="preset-btn" data-preset="assistive" title="Obstacles, vehicles, pedestrians and hazards">
-              🚶 Assistive & Obstacles
-            </button>
-            <button class="preset-btn" data-preset="all" title="Detect all 80 COCO classes">
-              🌐 All 80 Classes
-            </button>
+          <!-- Quick Preset Buttons (Dynamically Populated) -->
+          <div class="preset-buttons" id="presetButtonsContainer">
+            <!-- Populated based on active dataset -->
           </div>
 
           <!-- Search & Count -->
           <div class="class-search-bar">
-            <input type="text" id="classSearchInput" class="form-input" placeholder="Search classes (e.g. smartphone, book, cat)..." />
+            <input type="text" id="classSearchInput" class="form-input" placeholder="Search classes (e.g. smartphone, stairs, keys)..." />
             <div class="class-batch-actions">
               <button id="selectAllClassesBtn" class="btn-link">Select All</button>
               <button id="clearAllClassesBtn" class="btn-link">Clear</button>
@@ -177,7 +189,7 @@
                 <span class="switch-slider"></span>
                 <span class="switch-text">
                   <strong>Text-to-Speech Guidance (Blind Assist)</strong>
-                  <small class="text-muted d-block">Speaks detected objects and positions (e.g., "Person ahead", "Smartphone on right")</small>
+                  <small class="text-muted d-block">Speaks detected objects and positions (e.g., "Person ahead", "Stairs on right", "Smartphone detected")</small>
                 </span>
               </label>
             </div>
@@ -208,10 +220,11 @@
     <footer class="app-footer">
       <div class="footer-content">
         <p>
-          <strong>Camera-Project-3D</strong> • High-Speed Assistive Guidance System using STEVAL-VL53L9 ToF 3D LIDAR & Edge Vision.
+          <strong>Camera-Project-3D v0.1.1</strong> • Assistive Guidance System using STEVAL-VL53L9 ToF 3D LIDAR & Edge Vision.
         </p>
         <p class="footer-links">
           <a href="https://github.com/kreier/camera-project-3D" target="_blank" rel="noopener">Repository</a> •
+          <a href="https://github.com/kreier/camera-project-3D/releases" target="_blank" rel="noopener">Releases</a> •
           <a href="https://github.com/kreier/camera-project-3D/blob/main/AGENTS.md" target="_blank" rel="noopener">Agent Operating Manual (AGENTS.md)</a> •
           <a href="https://github.com/kreier/camera-project-3D/blob/main/README.md" target="_blank" rel="noopener">Documentation</a>
         </p>

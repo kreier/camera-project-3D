@@ -17,10 +17,17 @@ def parse_args():
         description="Run real-time object detection on a webcam feed using YOLO."
     )
     parser.add_argument(
+        "--dataset",
+        type=str,
+        choices=["coco", "objects365"],
+        default="coco",
+        help="Target dataset: 'coco' (80 classes) or 'objects365' (365 classes) (default: coco).",
+    )
+    parser.add_argument(
         "--model",
         type=str,
-        default="yolo26n.pt",
-        help="Path or name of YOLO model weights (default: yolo26n.pt).",
+        default=None,
+        help="Path or name of YOLO model weights. Default is 'yolo26n.pt' for COCO or 'yolov8n-o365.pt' for Objects365.",
     )
     parser.add_argument(
         "--camera",
@@ -50,10 +57,14 @@ def main():
         )
         sys.exit(1)
 
-    print(f"Loading YOLO model: {args.model} ...")
+    model_name = args.model
+    if not model_name:
+        model_name = "yolov8n-o365.pt" if args.dataset == "objects365" else "yolo26n.pt"
+
+    print(f"Loading YOLO model ({args.dataset.upper()}): {model_name} ...")
     try:
         # Load the model (downloads weights automatically if not locally cached)
-        model = YOLO(args.model)
+        model = YOLO(model_name)
     except Exception as e:
         print(f"Failed to load YOLO model: {e}", file=sys.stderr)
         sys.exit(1)

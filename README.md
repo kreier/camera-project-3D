@@ -25,7 +25,10 @@ The repository includes:
 ## 🚀 Key Features
 
 - ⚡ **Ultra-Fast Instant Startup**: Automatically boots with the lightest available model (`MobileNet v2 Lite`, ~2.5 MB), achieving immediate real-time video streaming without waiting for massive weights to download.
-- 🔄 **On-Demand Browser Model Switching**: Seamlessly download and switch between 5 different vision models directly in the browser:
+- 🌐 **Dataset Switcher (COCO & Objects365)**: Toggle between standard **COCO (80 classes)** and the massive **Objects365 (365 classes)** dataset with a single click.
+- 🔄 **On-Demand Browser Model Switching**:
+  
+  #### COCO Models (80 Classes)
   | Model | Size | Engine | Latency (approx) | Best For |
   | :--- | :--- | :--- | :--- | :--- |
   | **MobileNet v2 Lite** *(Default)* | ~2.5 MB | TensorFlow.js / WebGL | 15–30 ms | Instant boot, low memory, mobile devices |
@@ -33,17 +36,25 @@ The repository includes:
   | **MobileNet v1 Deep** | ~27.0 MB | TensorFlow.js / WebGL | 60–90 ms | High-accuracy detection in crowded scenes |
   | **MediaPipe EfficientDet-Lite0** | ~4.4 MB | MediaPipe / WebAssembly | 25–45 ms | EfficientNet mobile architecture |
   | **MediaPipe EfficientDet-Lite2** | ~7.2 MB | MediaPipe / WebAssembly | 45–75 ms | High-resolution (448×448) small-object detection |
+
+  #### Objects365 Models (365 Classes - Larger & More Sophisticated)
+  | Model | Size | Engine | Latency (approx) | Best For |
+  | :--- | :--- | :--- | :--- | :--- |
+  | **YOLO11s-O365 (FP16 Edge)** | ~19.3 MB | ONNX Runtime Web / WebGL | 35–60 ms | Fast edge inference on 365 categories |
+  | **YOLO11s-O365 (Full FP32)** | ~38.5 MB | ONNX Runtime Web / WebGL | 55–90 ms | High-precision predictions across all 365 classes |
+  | **LW-DETR Objects365 (Transformer)** | ~56.0 MB | ONNX Runtime Web / WASM | 90–140 ms | Deformable attention transformer, eliminates NMS |
+  | **Co-DETR / YOLOv8x O365 (Extra-Large SOTA)** | ~136.0 MB | High-Performance ONNX / Edge | 180–260 ms | Maximum precision for small objects (keys, stairs, power outlets) |
+
 - 🎯 **Target Class Filtering & Presets**:
-  - **Top 10 Focus Classes**: Focused on daily navigation and assistance: `person`, `cell phone` (smartphone), `book`, `car`, `cat`, `dog`, `chair`, `bottle`, `laptop`, `bicycle`.
-  - **Assistive & Obstacle Alerts**: Fast filtering for hazards and pedestrians: `person`, `car`, `bicycle`, `motorcycle`, `bus`, `truck`, `dog`, `chair`, `stop sign`, `traffic light`.
-  - **All 80 COCO Classes**: Full object vocabulary.
-  - **Interactive Class Grid & Search**: One-click toggling of any individual class tag.
-- 🔊 **Assistive Audio Guidance (Text-to-Speech)**: Integrated Web Speech API announces detected objects and directional placement (*"Person ahead"*, *"Smartphone on your right"*, *"Book on your left"*) with customizable interval throttling.
+  - **COCO Presets**: Top 10 Focus Classes (`person`, `cell phone`, `book`, `car`, `cat`, `dog`, `chair`, `bottle`, `laptop`, `bicycle`), Assistive Obstacles, and All 80 classes.
+  - **Objects365 Presets**: Daily Focus 15 (`Person`, `Cell Phone`, `Laptop`, `Chair`, `Glasses`, `Book`, `Desk`, `Cabinet`, `Cup`, `Bottle`, `Door`, `Stairs`, `Key`), Assistive Mobility & Hazards (`Stairs`, `Walking Stick`, `Door`, `Traffic cone`, `Barrier`, `Street Lights`, `Wheelchair`), Indoor Household, and All 365 classes.
+  - **Interactive Class Grid & Search**: One-click toggling of any individual class tag across both datasets.
+- 🔊 **Assistive Audio Guidance (Text-to-Speech)**: Integrated Web Speech API announces detected objects and directional placement (*"Person ahead"*, *"Stairs on your right"*, *"Key on your left"*) with customizable interval throttling.
 - 📹 **Full Camera Control**:
   - Device selector for switching between front/rear cameras or external USB webcams.
   - Horizontal flip (mirror view) toggle.
   - One-click snapshot export with bounding boxes and confidence score overlay.
-- 📊 **Real-Time Telemetry**: Live FPS counter, inference latency in milliseconds, active model size, and object counts.
+- 📊 **Real-Time Telemetry**: Live FPS counter, active dataset badge, inference latency in milliseconds, active model size, and object counts.
 
 ---
 
@@ -79,11 +90,14 @@ To run local inference via Python and OpenCV:
 # Install Python dependencies
 pip install -r requirements.txt
 
-# Run live detection with default lightweight YOLO nano model
-python3 detection.py
+# Run live detection with default COCO lightweight YOLO model
+python3 detection.py --dataset coco
+
+# Run live detection with Objects365 models (365 classes)
+python3 detection.py --dataset objects365 --model yolov8n-o365.pt
 
 # Optional CLI flags:
-python3 detection.py --camera 0 --model yolo26n.pt --conf 0.45
+python3 detection.py --camera 0 --conf 0.45
 ```
 
 ---

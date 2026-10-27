@@ -1,12 +1,11 @@
 /**
  * app.js - Main Application Controller for Vision3D Assistive Detector
- * Part of Camera-Project-3D Agentic Repository
+ * Supports COCO (80 Classes) and Objects365 (365 Classes)
+ * Part of Camera-Project-3D (Version v0.1.1)
  */
 
 import {
-  COCO_CLASSES,
-  CLASS_PRESETS,
-  MODEL_REGISTRY,
+  DATASETS,
   loadModel,
   detectObjects
 } from './models.js';
@@ -22,10 +21,13 @@ const progressBarFill = document.getElementById('progressBarFill');
 const fpsCounter = document.getElementById('fpsCounter');
 const latencyCounter = document.getElementById('latencyCounter');
 const objectsCounter = document.getElementById('objectsCounter');
+const activeDatasetBadge = document.getElementById('activeDatasetBadge');
 const activeModelBadge = document.getElementById('activeModelBadge');
 const modelStatusDot = document.getElementById('modelStatusDot');
 const modelStatusText = document.getElementById('modelStatusText');
 const streamStatus = document.getElementById('streamStatus');
+const classFilterHint = document.getElementById('classFilterHint');
+const activeClassCountBadge = document.getElementById('activeClassCountBadge');
 
 const toggleWebcamBtn = document.getElementById('toggleWebcamBtn');
 const webcamBtnText = document.getElementById('webcamBtnText');
@@ -33,12 +35,14 @@ const flipCameraBtn = document.getElementById('flipCameraBtn');
 const captureSnapshotBtn = document.getElementById('captureSnapshotBtn');
 const cameraSelect = document.getElementById('cameraSelect');
 
+const tabCoco = document.getElementById('tabCoco');
+const tabObjects365 = document.getElementById('tabObjects365');
 const modelPickerList = document.getElementById('modelPickerList');
+const presetButtonsContainer = document.getElementById('presetButtonsContainer');
 const classBadgeContainer = document.getElementById('classBadgeContainer');
 const classSearchInput = document.getElementById('classSearchInput');
 const selectAllClassesBtn = document.getElementById('selectAllClassesBtn');
 const clearAllClassesBtn = document.getElementById('clearAllClassesBtn');
-const presetButtons = document.querySelectorAll('.preset-btn');
 
 const confidenceSlider = document.getElementById('confidenceSlider');
 const confidenceValue = document.getElementById('confidenceValue');
@@ -48,12 +52,13 @@ const speechThrottleValue = document.getElementById('speechThrottleValue');
 
 // Application State
 const state = {
+  activeDataset: 'coco', // 'coco' or 'objects365'
   currentModelId: 'lite_mobilenet_v2', // Starts fast with the lightest model
   isWebcamActive: false,
   isFlipped: false,
   isDetecting: false,
   minConfidence: 0.40,
-  selectedClasses: new Set(CLASS_PRESETS.essential10.classes),
+  selectedClasses: new Set(DATASETS.coco.presets.essential10.classes),
   activePreset: 'essential10',
   availableCameras: [],
   selectedCameraId: '',
@@ -72,23 +77,20 @@ const state = {
   speechSynth: window.speechSynthesis || null,
 };
 
-// Vibrant Class Colors for Distinct Bounding Boxes
-const CLASS_COLORS = {
-  'person': '#3b82f6',      // Blue
-  'cell phone': '#ec4899',  // Pink
-  'book': '#10b981',        // Emerald
-  'car': '#f59e0b',         // Amber
-  'cat': '#8b5cf6',         // Purple
-  'dog': '#06b6d4',         // Cyan
-  'chair': '#6366f1',       // Indigo
-  'bottle': '#14b8a6',      // Teal
-  'laptop': '#d946ef',      // Fuchsia
-  'bicycle': '#84cc16',     // Lime
-  'default': '#f43f5e'      // Rose
-};
+// Distinct Class Colors for Guidance
+const COLOR_PALETTE = [
+  '#3b82f6', '#ec4899', '#10b981', '#f59e0b', '#8b5cf6',
+  '#06b6d4', '#6366f1', '#14b8a6', '#d946ef', '#84cc16',
+  '#f97316', '#a855f7', '#e11d48', '#0284c7', '#059669'
+];
 
 function getClassColor(className) {
-  return CLASS_COLORS[className] || CLASS_COLORS['default'];
+  let hash = 0;
+  for (let i = 0; i < className.length; i++) {
+    hash = className.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const index = Math.abs(hash) % COLOR_PALETTE.length;
+  return COLOR_PALETTE[index];
 }
 
 /* ==========================================================================
@@ -194,7 +196,6 @@ function captureSnapshot() {
   snapCanvas.height = videoEl.videoHeight;
   const sCtx = snapCanvas.getContext('2d');
 
-  // Draw video frame (respecting flip state)
   if (state.isFlipped) {
     sCtx.save();
     sCtx.scale(-1, 1);
@@ -204,61 +205,99 @@ function captureSnapshot() {
     sCtx.drawImage(videoEl, 0, 0, snapCanvas.width, snapCanvas.height);
   }
 
-  // Draw active annotations
   renderDetections(sCtx, state.lastDetections, snapCanvas.width, snapCanvas.height, state.isFlipped);
 
-  // Trigger download
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const link = document.createElement('a');
-  link.download = `vision3d-detection-${timestamp}.png`;
+  link.download = `vision3d-${state.activeDataset}-${timestamp}.png`;
   link.href = snapCanvas.toDataURL('image/png');
   link.click();
 }
 
 /* ==========================================================================
-   2. Model Loading & Switching
+   2. Dataset & Model Switching
    ========================================================================== */
 
-async function switchModel(modelId) {
-  if (modelId === state.currentModelId && state.isDetecting) return;
+function switchDataset(datasetKey) {
+  if (state.activeDataset === datasetKey) return;
 
+  state.activeDataset = datasetKey;
+  const ds = DATASETS[datasetKey];
+
+  // Update tabs
+  tabCoco.classList.toggle('active', datasetKey === 'coco');
+  tabObjects365.classList.toggle('active', datasetKey === 'objects365');
+
+  // Update telemetry and hint
+  if (datasetKey === 'coco') {
+    activeDatasetBadge.textContent = 'COCO (80)';
+    activeDatasetBadge.style.color = '#10b981';
+    classFilterHint.textContent = 'COCO benchmark: 80 common object classes';
+  } else {
+    activeDatasetBadge.textContent = 'Objects365 (365)';
+    activeDatasetBadge.style.color = '#c084fc';
+    classFilterHint.textContent = 'Objects365: 365 daily objects, stairs, appliances, tools & hazards';
+  }
+
+  // Set default preset
+  state.activePreset = ds.defaultPreset;
+  state.selectedClasses = new Set(ds.presets[ds.defaultPreset].classes);
+
+  renderPresetButtons();
+  renderModelPickerList();
+  renderClassBadges();
+
+  // Switch to default model for this dataset
+  switchModel(ds.defaultModel);
+}
+
+async function switchModel(modelId) {
   state.currentModelId = modelId;
   renderModelPickerList();
 
-  const modelInfo = MODEL_REGISTRY.find(m => m.id === modelId);
-  activeModelBadge.textContent = `${modelInfo.name.split(' ')[0]} ${modelInfo.name.split(' ')[1] || ''}`;
+  const ds = DATASETS[state.activeDataset];
+  let modelInfo = ds.models.find(m => m.id === modelId);
+  if (!modelInfo) {
+    // Look in other dataset if not found
+    for (const d of Object.values(DATASETS)) {
+      const f = d.models.find(m => m.id === modelId);
+      if (f) { modelInfo = f; break; }
+    }
+  }
 
-  showOverlayProgress(`Loading ${modelInfo.name}...`, 30);
+  activeModelBadge.textContent = modelInfo ? modelInfo.name.split(' ')[0] : modelId;
+
+  showOverlayProgress(`Loading ${modelInfo.name}...`, 25);
   modelStatusDot.className = 'status-indicator';
-  modelStatusText.textContent = `Downloading ${modelInfo.name} (${modelInfo.sizeMB} MB)...`;
+  modelStatusText.textContent = `Preparing ${modelInfo.name} (${modelInfo.sizeMB} MB)...`;
 
   try {
     const startTime = performance.now();
     await loadModel(modelId, (progress) => {
-      if (progress.status === 'downloading') {
-        showOverlayProgress(progress.text, 65);
-      } else if (progress.status === 'compiling') {
-        showOverlayProgress(progress.text, 90);
-      }
+      showOverlayProgress(progress.text, progress.percent || 50);
+      modelStatusText.textContent = progress.text;
     });
 
     const elapsed = Math.round(performance.now() - startTime);
     modelStatusDot.className = 'status-indicator ready';
-    modelStatusText.textContent = `${modelInfo.name} ready (${elapsed}ms init)`;
+    modelStatusText.textContent = `${modelInfo.name} active (${elapsed}ms ready)`;
     hideOverlay();
   } catch (err) {
     console.error('Failed to load model:', err);
     modelStatusDot.className = 'status-indicator';
-    modelStatusText.textContent = `Error: ${err.message}`;
+    modelStatusText.textContent = `Notice: ${err.message}`;
     showOverlayError(`Failed to load ${modelInfo.name}: ${err.message}`);
   }
 }
 
 function renderModelPickerList() {
   modelPickerList.innerHTML = '';
-  MODEL_REGISTRY.forEach(model => {
+  const currentDataset = DATASETS[state.activeDataset];
+
+  currentDataset.models.forEach(model => {
     const item = document.createElement('div');
-    item.className = `model-choice-item ${model.id === state.currentModelId ? 'active' : ''}`;
+    const isActive = model.id === state.currentModelId;
+    item.className = `model-choice-item ${isActive ? 'active' : ''}`;
     item.innerHTML = `
       <div class="model-item-info">
         <div class="model-item-title">
@@ -276,10 +315,30 @@ function renderModelPickerList() {
   });
 }
 
+function renderPresetButtons() {
+  presetButtonsContainer.innerHTML = '';
+  const ds = DATASETS[state.activeDataset];
+
+  Object.values(ds.presets).forEach(preset => {
+    const btn = document.createElement('button');
+    btn.className = `preset-btn ${preset.id === state.activePreset ? 'active' : ''}`;
+    btn.textContent = preset.name;
+    btn.title = preset.description;
+    btn.addEventListener('click', () => {
+      state.activePreset = preset.id;
+      state.selectedClasses = new Set(preset.classes);
+      renderPresetButtons();
+      renderClassBadges(classSearchInput.value);
+    });
+    presetButtonsContainer.appendChild(btn);
+  });
+}
+
 function showOverlayProgress(msg, percent) {
   viewportOverlay.classList.remove('hidden');
   overlayMessage.textContent = msg;
   progressBarFill.style.width = `${percent}%`;
+  progressBarFill.style.backgroundColor = 'var(--primary)';
 }
 
 function hideOverlay() {
@@ -299,48 +358,38 @@ function showOverlayError(msg) {
 
 function renderClassBadges(filterSearch = '') {
   classBadgeContainer.innerHTML = '';
+  const ds = DATASETS[state.activeDataset];
   const search = filterSearch.trim().toLowerCase();
 
-  COCO_CLASSES.forEach(className => {
-    if (search && !className.includes(search)) return;
+  let countVisible = 0;
+  ds.classes.forEach(className => {
+    const norm = className.toLowerCase();
+    if (search && !norm.includes(search)) return;
 
+    countVisible++;
     const badge = document.createElement('span');
-    const isSelected = state.selectedClasses.has(className);
-    const isEssential = CLASS_PRESETS.essential10.classes.includes(className);
+    const isSelected = state.selectedClasses.has(className) || state.selectedClasses.has(norm);
 
-    badge.className = `class-badge ${isSelected ? 'selected' : ''} ${isEssential ? 'highlight' : ''}`;
+    badge.className = `class-badge ${isSelected ? 'selected' : ''}`;
     badge.textContent = className;
-    badge.title = isEssential ? 'Focus class (Essential 10)' : className;
+    badge.title = `Click to toggle ${className}`;
 
     badge.addEventListener('click', () => {
       if (state.selectedClasses.has(className)) {
         state.selectedClasses.delete(className);
+        state.selectedClasses.delete(norm);
       } else {
         state.selectedClasses.add(className);
       }
       state.activePreset = 'custom';
-      updatePresetButtonStates();
+      renderPresetButtons();
       renderClassBadges(classSearchInput.value);
     });
 
     classBadgeContainer.appendChild(badge);
   });
-}
 
-function applyPreset(presetKey) {
-  const preset = CLASS_PRESETS[presetKey];
-  if (!preset) return;
-
-  state.activePreset = presetKey;
-  state.selectedClasses = new Set(preset.classes);
-  updatePresetButtonStates();
-  renderClassBadges(classSearchInput.value);
-}
-
-function updatePresetButtonStates() {
-  presetButtons.forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.preset === state.activePreset);
-  });
+  activeClassCountBadge.textContent = `${state.selectedClasses.size} Active`;
 }
 
 /* ==========================================================================
@@ -358,14 +407,11 @@ async function detectionLoop() {
       state.latency = Math.round(tEnd - tStart);
       state.lastDetections = detections;
 
-      // Clear & Draw
       ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
       renderDetections(ctx, detections, canvasEl.width, canvasEl.height, state.isFlipped);
 
-      // Assistive Audio Trigger
       triggerAudioGuidance(detections, canvasEl.width);
 
-      // Update counters
       objectsCounter.textContent = detections.length;
       latencyCounter.textContent = `${state.latency} ms`;
     } catch (err) {
@@ -373,7 +419,6 @@ async function detectionLoop() {
     }
   }
 
-  // Calculate FPS
   state.frameCount++;
   const now = performance.now();
   if (now - state.lastFrameTime >= 1000) {
@@ -390,7 +435,6 @@ function renderDetections(targetCtx, detections, width, height, flipped) {
   detections.forEach(det => {
     let [x, y, w, h] = det.bbox;
 
-    // Adjust for horizontal flip if active
     if (flipped) {
       x = width - (x + w);
     }
@@ -413,13 +457,12 @@ function renderDetections(targetCtx, detections, width, height, flipped) {
     targetCtx.save();
     targetCtx.strokeStyle = '#ffffff';
     targetCtx.lineWidth = targetCtx.lineWidth + 1;
-    // Top-left corner
     targetCtx.beginPath();
     targetCtx.moveTo(x, y + cornerSize);
     targetCtx.lineTo(x, y);
     targetCtx.lineTo(x + cornerSize, y);
     targetCtx.stroke();
-    // Bottom-right corner
+
     targetCtx.beginPath();
     targetCtx.moveTo(x + w, y + h - cornerSize);
     targetCtx.lineTo(x + w, y + h);
@@ -458,7 +501,6 @@ function triggerAudioGuidance(detections, frameWidth) {
   if (now - state.lastSpeechTime < state.speechIntervalSec * 1000) return;
   if (state.speechSynth.speaking) return;
 
-  // Pick highest confidence detection
   const primary = detections[0];
   const centerX = primary.bbox[0] + primary.bbox[2] / 2;
   const ratio = centerX / frameWidth;
@@ -484,7 +526,7 @@ function triggerAudioGuidance(detections, frameWidth) {
    ========================================================================== */
 
 function setupEventListeners() {
-  // Webcam Buttons
+  // Webcam Controls
   toggleWebcamBtn.addEventListener('click', toggleWebcam);
   flipCameraBtn.addEventListener('click', toggleFlipCamera);
   captureSnapshotBtn.addEventListener('click', captureSnapshot);
@@ -494,12 +536,9 @@ function setupEventListeners() {
     initWebcam(state.selectedCameraId);
   });
 
-  // Presets
-  presetButtons.forEach(btn => {
-    btn.addEventListener('click', () => {
-      applyPreset(btn.dataset.preset);
-    });
-  });
+  // Dataset Switcher Tabs
+  tabCoco.addEventListener('click', () => switchDataset('coco'));
+  tabObjects365.addEventListener('click', () => switchDataset('objects365'));
 
   // Search & Batch Class Selection
   classSearchInput.addEventListener('input', (e) => {
@@ -507,16 +546,17 @@ function setupEventListeners() {
   });
 
   selectAllClassesBtn.addEventListener('click', () => {
-    state.selectedClasses = new Set(COCO_CLASSES);
+    const ds = DATASETS[state.activeDataset];
+    state.selectedClasses = new Set(ds.classes);
     state.activePreset = 'all';
-    updatePresetButtonStates();
+    renderPresetButtons();
     renderClassBadges(classSearchInput.value);
   });
 
   clearAllClassesBtn.addEventListener('click', () => {
     state.selectedClasses.clear();
     state.activePreset = 'custom';
-    updatePresetButtonStates();
+    renderPresetButtons();
     renderClassBadges(classSearchInput.value);
   });
 
@@ -547,6 +587,7 @@ function setupEventListeners() {
 // Bootstrap Application
 async function main() {
   setupEventListeners();
+  renderPresetButtons();
   renderModelPickerList();
   renderClassBadges();
 
@@ -562,5 +603,4 @@ async function main() {
   requestAnimationFrame(detectionLoop);
 }
 
-// Run on page load
 window.addEventListener('DOMContentLoaded', main);

@@ -5,8 +5,8 @@ Camera-Project-3D provides real-time in-browser object detection via webcam and 
 
 ## Core Rules
 - **Fast Startup First**: The default in-browser model is `lite_mobilenet_v2` (~2.5 MB). Always maintain instant startup.
-- **Model Registry**: Add new models to `MODEL_REGISTRY` in `models.js`. Include size, family, and description.
-- **Static Deployment**: The web app runs statically from the root (`index.html`, `styles.css`, `app.js`, `models.js`). GitHub Actions deploys root directly to GitHub Pages without mandatory compile steps.
+- **Dual Datasets**: Supports both COCO (80 classes) and Objects365 (365 classes). Configure in `models.js` and `objects365.js`.
+- **Static Deployment**: The web app runs statically from the root (`index.html`, `styles.css`, `app.js`, `models.js`, `objects365.js`). GitHub Actions deploys root directly to GitHub Pages without mandatory compile steps.
 - **Model Weights**: Never commit binary weights (`.pt`, `.onnx`, `.tflite`). Keep them in `.gitignore`.
 
 ## Essential Commands
