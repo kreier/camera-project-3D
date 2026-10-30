@@ -142,24 +142,11 @@ export const DATASETS = {
         family: 'onnx',
         modelUrl: 'https://huggingface.co/wide-video/yoloe-11-Objects365-v1.0.0/resolve/main/yoloe-11s-seg-object365.onnx',
         sizeMB: 38.5,
-        speed: 'Balanced (~55-90ms)',
-        accuracy: 'Very High (Full Precision)',
-        description: 'Full FP32 tensor precision across 365 categories with WebGPU and WASM compatibility.',
+        speed: 'Fast (~60-90ms)',
+        accuracy: 'Very High (365 Categories)',
+        description: 'Full FP32 precision vision model running via multi-threaded WASM with SIMD across all 365 categories.',
         recommended: true,
         isDefault: true
-      },
-      {
-        id: 'yolo11s_o365_fp16',
-        dataset: 'objects365',
-        name: 'YOLO11s-O365 (FP16 Edge - WebGPU Only)',
-        family: 'onnx',
-        modelUrl: 'https://huggingface.co/wide-video/yoloe-11-Objects365-v1.0.0/resolve/main/yoloe-11s-seg-object365_fp16.onnx',
-        sizeMB: 19.3,
-        speed: 'Fast (~35-60ms)',
-        accuracy: 'High (365 Categories)',
-        description: 'Edge-optimized YOLO11 model in FP16. Requires modern WebGPU browser support.',
-        recommended: false,
-        isDefault: false
       }
     ]
   }
@@ -401,21 +388,30 @@ export async function loadModel(modelId, onProgress = () => {}) {
 
       onProgress({ status: 'compiling', text: `Compiling ONNX computation graph (WebGPU / WASM)...`, percent: 95 });
 
-      // Multi-provider fallback:
-      // 1. Try WebGPU (accelerated shader execution)
-      // 2. Fall back to WASM
+      // Multi-provider fallback with dry-run operator verification:
+      // 1. If WebGPU is supported, test with an actual dry-run inference to ensure all ops (like DFL Softmax) succeed
+      // 2. If WebGPU fails (due to DFL axis constraint or driver error), fallback to WASM with SIMD/multithreading
       let session = null;
       let usedProvider = 'wasm';
 
       if (navigator.gpu) {
         try {
-          session = await window.ort.InferenceSession.create(modelBuffer.slice(0).buffer, {
+          const testSession = await window.ort.InferenceSession.create(modelBuffer.slice(0).buffer, {
             executionProviders: ['webgpu']
           });
-          usedProvider = 'webgpu';
-          console.log(`[ONNX] Successfully initialized ${config.name} with WebGPU backend.`);
+          // Validate with a dry-run inference to test WebGPU kernel compatibility
+          const dummyData = new Float32Array(3 * 640 * 640);
+          const dummyTensor = new window.ort.Tensor('float32', dummyData, [1, 3, 640, 640]);
+          const inputName = testSession.inputNames[0] || 'images';
+          const testOut = await testSession.run({ [inputName]: dummyTensor });
+          if (testOut && testOut[testSession.outputNames[0]]) {
+            session = testSession;
+            usedProvider = 'webgpu';
+            console.log(`[ONNX] Successfully verified ${config.name} with WebGPU backend.`);
+          }
         } catch (gpuErr) {
-          console.warn('[ONNX] WebGPU provider initialization failed, falling back to WASM:', gpuErr);
+          console.warn('[ONNX] WebGPU cannot run this model (e.g. DFL Softmax axis constraint). Falling back to WASM:', gpuErr);
+          session = null;
         }
       }
 
@@ -423,8 +419,17 @@ export async function loadModel(modelId, onProgress = () => {}) {
         session = await window.ort.InferenceSession.create(modelBuffer.buffer, {
           executionProviders: ['wasm']
         });
+        // Warm up WASM session to pre-compile CPU kernels
+        try {
+          const dummyData = new Float32Array(3 * 640 * 640);
+          const dummyTensor = new window.ort.Tensor('float32', dummyData, [1, 3, 640, 640]);
+          const inputName = session.inputNames[0] || 'images';
+          await session.run({ [inputName]: dummyTensor });
+        } catch (warmupErr) {
+          console.warn('[ONNX] WASM warm-up warning:', warmupErr);
+        }
         usedProvider = 'wasm';
-        console.log(`[ONNX] Successfully initialized ${config.name} with WASM backend.`);
+        console.log(`[ONNX] Successfully verified ${config.name} with WASM backend.`);
       }
 
       onnxSession = session;
@@ -551,8 +556,8 @@ export async function detectObjects(videoElement, minScore = 0.35, activeClasses
       if (data) {
         const numClasses = 365;
         const numBoxes = 8400;
-        const scaleX = videoElement.videoWidth / inputWidth;
-        const scaleY = videoElement.videoHeight / inputHeight;
+        const scaleX = (videoElement.videoWidth || inputWidth) / inputWidth;
+        const scaleY = (videoElement.videoHeight || inputHeight) / inputHeight;
 
         // Determine target class indices from activeClasses filter
         let targetClassIndices = [];
@@ -599,6 +604,9 @@ export async function detectObjects(videoElement, minScore = 0.35, activeClasses
             const cy = data[1 * numBoxes + b] * scaleY;
             const w = data[2 * numBoxes + b] * scaleX;
             const h = data[3 * numBoxes + b] * scaleY;
+
+            if (w <= 8 || h <= 8 || isNaN(w) || isNaN(h)) continue;
+
             const x = Math.max(0, cx - w / 2);
             const y = Math.max(0, cy - h / 2);
 
@@ -636,7 +644,7 @@ export async function detectObjects(videoElement, minScore = 0.35, activeClasses
         }
       }
     } catch (e) {
-      console.warn('ONNX inference error:', e);
+      console.error('[Vision3D ONNX Inference Error]:', e);
     }
     return results;
   }

@@ -228,15 +228,21 @@ function switchDataset(datasetKey) {
   tabCoco.classList.toggle('active', datasetKey === 'coco');
   tabObjects365.classList.toggle('active', datasetKey === 'objects365');
 
-  // Update telemetry and hint
+  // Update telemetry, hint, and optimal confidence threshold
   if (datasetKey === 'coco') {
     activeDatasetBadge.textContent = 'COCO (80)';
     activeDatasetBadge.style.color = '#10b981';
     classFilterHint.textContent = 'COCO benchmark: 80 common object classes';
+    state.minConfidence = 0.40;
+    confidenceSlider.value = 40;
+    confidenceValue.textContent = '40%';
   } else {
     activeDatasetBadge.textContent = 'Objects365 (365)';
     activeDatasetBadge.style.color = '#c084fc';
     classFilterHint.textContent = 'Objects365: 365 daily objects, stairs, appliances, tools & hazards';
+    state.minConfidence = 0.25;
+    confidenceSlider.value = 25;
+    confidenceValue.textContent = '25%';
   }
 
   // Set default preset
@@ -263,6 +269,12 @@ async function switchModel(modelId) {
       const f = d.models.find(m => m.id === modelId);
       if (f) { modelInfo = f; break; }
     }
+  }
+
+  if (modelInfo && modelInfo.family === 'onnx' && state.minConfidence > 0.25) {
+    state.minConfidence = 0.25;
+    confidenceSlider.value = 25;
+    confidenceValue.textContent = '25%';
   }
 
   activeModelBadge.textContent = modelInfo ? modelInfo.name.split(' ')[0] : modelId;
