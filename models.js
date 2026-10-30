@@ -63,10 +63,10 @@ export const DATASETS = {
         name: 'MobileNet v2 Lite (Ultra Fast)',
         family: 'tensorflow',
         base: 'lite_mobilenet_v2',
-        sizeMB: 2.5,
+        sizeMB: 18.5,
         speed: 'Ultra Fast (~15-30ms)',
         accuracy: 'Good (Mobile-Optimized)',
-        description: 'Lightest model. Instant sub-second startup, low memory. Starts by default.',
+        description: 'Lightweight MobileNet v2 detector (~18.5 MB total weights). Starts by default with CacheStorage acceleration.',
         recommended: true,
         isDefault: true
       },
@@ -76,7 +76,7 @@ export const DATASETS = {
         name: 'MobileNet v2 Standard',
         family: 'tensorflow',
         base: 'mobilenet_v2',
-        sizeMB: 5.5,
+        sizeMB: 18.5,
         speed: 'Fast (~30-50ms)',
         accuracy: 'Very Good',
         description: 'Balanced speed and precision with stable bounding boxes.',
@@ -144,7 +144,7 @@ export const DATASETS = {
         sizeMB: 38.5,
         speed: 'Balanced (~55-90ms)',
         accuracy: 'Very High (Full Precision)',
-        description: 'Full FP32 tensor precision offering stable predictions across all 365 classes with WebGPU/WASM compatibility.',
+        description: 'Full FP32 tensor precision across 365 categories with WebGPU and WASM compatibility.',
         recommended: true,
         isDefault: true
       },
@@ -160,32 +160,6 @@ export const DATASETS = {
         description: 'Edge-optimized YOLO11 model in FP16. Requires modern WebGPU browser support.',
         recommended: false,
         isDefault: false
-      },
-      {
-        id: 'lwdetr_o365_medium',
-        dataset: 'objects365',
-        name: 'LW-DETR Objects365 (Transformer)',
-        family: 'onnx',
-        modelUrl: 'https://huggingface.co/stevenbucaille/lwdetr_medium_30e_objects365/resolve/main/model.onnx',
-        sizeMB: 56.0,
-        speed: 'Sophisticated (~90-140ms)',
-        accuracy: 'SOTA Deformable Attention',
-        description: 'End-to-end vision transformer. Eliminates NMS heuristics for high-density cluttered scene understanding.',
-        recommended: false,
-        isDefault: false
-      },
-      {
-        id: 'codetr_o365_xlarge',
-        dataset: 'objects365',
-        name: 'Co-DETR / YOLOv8x O365 (Extra-Large SOTA)',
-        family: 'onnx',
-        modelUrl: 'https://huggingface.co/zongzhuofan/co-detr-vit-large-objects365/resolve/main/model.onnx',
-        sizeMB: 136.0,
-        speed: 'Deep (~180-260ms)',
-        accuracy: 'Maximum Precision (Dense Grid)',
-        description: 'Flagship multi-scale vision model for small assistive item detection (keys, power outlets, stairs).',
-        recommended: false,
-        isDefault: false
       }
     ]
   }
@@ -198,6 +172,46 @@ let mediaPipeVision = null;
 let onnxSession = null;
 let onnxOffscreenCanvas = null;
 let onnxOffscreenCtx = null;
+
+export const CACHE_NAME = 'vision3d-models-cache-v1';
+
+// Transparent CacheStorage interceptor for model shards and assets
+if (typeof window !== 'undefined' && window.caches && !window._cacheFetchPatched) {
+  window._cacheFetchPatched = true;
+  const originalFetch = window.fetch.bind(window);
+
+  window.fetch = async function(input, init) {
+    const url = typeof input === 'string' ? input : (input && input.url ? input.url : '');
+    const isModelAsset = url.includes('storage.googleapis.com/tfjs-models/') ||
+                         url.includes('.tflite') ||
+                         url.includes('.onnx') ||
+                         url.includes('vision_bundle.mjs');
+
+    if (isModelAsset && (!init || !init.method || init.method.toUpperCase() === 'GET')) {
+      try {
+        const cache = await window.caches.open(CACHE_NAME);
+        const cached = await cache.match(input);
+        if (cached) {
+          console.log('[CacheStorage] Serving cached model asset:', url);
+          return cached;
+        }
+
+        const networkResponse = await originalFetch(input, init);
+        if (networkResponse && networkResponse.status === 200) {
+          cache.put(input, networkResponse.clone()).catch(err => {
+            console.warn('[CacheStorage] Put error:', err);
+          });
+        }
+        return networkResponse;
+      } catch (err) {
+        console.warn('[CacheStorage] Interceptor error, falling back:', err);
+        return originalFetch(input, init);
+      }
+    }
+
+    return originalFetch(input, init);
+  };
+}
 
 /**
  * Get all models for a specific dataset or all combined
@@ -233,7 +247,24 @@ export async function loadModel(modelId, onProgress = () => {}) {
       throw new Error('TensorFlow.js or cocoSsd library is not loaded on window.');
     }
 
-    onProgress({ status: 'downloading', text: `Loading weights for ${config.name}...`, percent: 40 });
+    let isCached = false;
+    if (window.caches) {
+      try {
+        const cache = await window.caches.open(CACHE_NAME);
+        const checkUrl = `https://storage.googleapis.com/tfjs-models/savedmodel/${config.base === 'lite_mobilenet_v2' ? 'ssdlite_mobilenet_v2' : 'ssd_' + config.base}/model.json`;
+        const match = await cache.match(checkUrl);
+        if (match) isCached = true;
+      } catch (_) {}
+    }
+
+    onProgress({
+      status: 'downloading',
+      text: isCached
+        ? `Loading ${config.name} (from CacheStorage)...`
+        : `Loading weights for ${config.name} (${config.sizeMB} MB)...`,
+      percent: 40
+    });
+
     await window.tf.ready();
 
     if (window.tf.getBackend() !== 'webgl' && window.tf.findBackend('webgl')) {
@@ -248,7 +279,11 @@ export async function loadModel(modelId, onProgress = () => {}) {
     currentLoadedModel = model;
     currentModelConfig = config;
 
-    onProgress({ status: 'ready', text: `${config.name} ready!`, percent: 100 });
+    onProgress({
+      status: 'ready',
+      text: isCached ? `${config.name} ready (CacheStorage)!` : `${config.name} ready!`,
+      percent: 100
+    });
     return { model, config };
   }
 
@@ -284,13 +319,11 @@ export async function loadModel(modelId, onProgress = () => {}) {
     return { model: detector, config };
   }
 
-  // 3. ONNX Runtime Web Family (Objects365 YOLO11 / LW-DETR / Co-DETR)
+  // 3. ONNX Runtime Web Family (Objects365 YOLO11)
   if (config.family === 'onnx') {
     if (!window.ort) {
       throw new Error('ONNX Runtime Web (ort) library is not loaded on window.');
     }
-
-    onProgress({ status: 'downloading', text: `Downloading ${config.name} (${config.sizeMB} MB)...`, percent: 25 });
 
     try {
       // Configure WASM environment & multithreading
@@ -299,48 +332,84 @@ export async function loadModel(modelId, onProgress = () => {}) {
         window.ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/';
       }
 
-      // Fetch model with progress monitoring
-      const response = await fetch(config.modelUrl);
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status} when fetching ONNX weights from Hugging Face`);
+      let modelBuffer = null;
+      let fromCache = false;
+
+      // 1. Check local CacheStorage first for instant loading
+      if (window.caches) {
+        try {
+          const cache = await window.caches.open(CACHE_NAME);
+          const cachedResp = await cache.match(config.modelUrl);
+          if (cachedResp) {
+            onProgress({
+              status: 'downloading',
+              text: `Loading ${config.name} from local CacheStorage...`,
+              percent: 70
+            });
+            const blob = await cachedResp.blob();
+            modelBuffer = new Uint8Array(await blob.arrayBuffer());
+            fromCache = true;
+          }
+        } catch (cacheErr) {
+          console.warn('[CacheStorage] ONNX cache read error:', cacheErr);
+        }
       }
 
-      const contentLength = +response.headers.get('Content-Length') || (config.sizeMB * 1024 * 1024);
-      const reader = response.body.getReader();
-      let receivedBytes = 0;
-      const chunks = [];
+      // 2. Fetch from network if not in cache
+      if (!modelBuffer) {
+        onProgress({ status: 'downloading', text: `Downloading ${config.name} (${config.sizeMB} MB)...`, percent: 20 });
+        const response = await fetch(config.modelUrl);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status} when fetching ONNX weights from Hugging Face`);
+        }
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value);
-        receivedBytes += value.length;
-        const pct = Math.min(90, Math.round((receivedBytes / contentLength) * 100));
-        onProgress({
-          status: 'downloading',
-          text: `Downloading ${config.name}: ${(receivedBytes / (1024 * 1024)).toFixed(1)} / ${(contentLength / (1024 * 1024)).toFixed(1)} MB (${pct}%)`,
-          percent: pct
-        });
+        const contentLength = +response.headers.get('Content-Length') || (config.sizeMB * 1024 * 1024);
+        const reader = response.body.getReader();
+        let receivedBytes = 0;
+        const chunks = [];
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+          receivedBytes += value.length;
+          const pct = Math.min(90, Math.round((receivedBytes / contentLength) * 100));
+          onProgress({
+            status: 'downloading',
+            text: `Downloading ${config.name}: ${(receivedBytes / (1024 * 1024)).toFixed(1)} / ${(contentLength / (1024 * 1024)).toFixed(1)} MB (${pct}%)`,
+            percent: pct
+          });
+        }
+
+        modelBuffer = new Uint8Array(receivedBytes);
+        let offset = 0;
+        for (const chunk of chunks) {
+          modelBuffer.set(chunk, offset);
+          offset += chunk.length;
+        }
+
+        // Save to CacheStorage for next visit
+        if (window.caches) {
+          try {
+            const cache = await window.caches.open(CACHE_NAME);
+            cache.put(config.modelUrl, new Response(modelBuffer.slice(0), {
+              headers: { 'Content-Type': 'application/octet-stream' }
+            })).catch(e => console.warn('[CacheStorage] Put error:', e));
+          } catch (_) {}
+        }
       }
 
       onProgress({ status: 'compiling', text: `Compiling ONNX computation graph (WebGPU / WASM)...`, percent: 95 });
 
-      const modelBuffer = new Uint8Array(receivedBytes);
-      let offset = 0;
-      for (const chunk of chunks) {
-        modelBuffer.set(chunk, offset);
-        offset += chunk.length;
-      }
-
       // Multi-provider fallback:
-      // 1. Try WebGPU (accelerated modern shader execution, supported by ort.webgpu.min.js)
-      // 2. Fall back to WASM (CPU execution with 100% full ONNX operator & opset coverage)
+      // 1. Try WebGPU (accelerated shader execution)
+      // 2. Fall back to WASM
       let session = null;
       let usedProvider = 'wasm';
 
       if (navigator.gpu) {
         try {
-          session = await window.ort.InferenceSession.create(modelBuffer.slice().buffer, {
+          session = await window.ort.InferenceSession.create(modelBuffer.slice(0).buffer, {
             executionProviders: ['webgpu']
           });
           usedProvider = 'webgpu';
@@ -362,7 +431,12 @@ export async function loadModel(modelId, onProgress = () => {}) {
       currentLoadedModel = session;
       currentModelConfig = config;
 
-      onProgress({ status: 'ready', text: `${config.name} ready (${usedProvider.toUpperCase()})!`, percent: 100 });
+      const cacheLabel = fromCache ? ' [CacheStorage]' : '';
+      onProgress({
+        status: 'ready',
+        text: `${config.name} ready (${usedProvider.toUpperCase()})${cacheLabel}!`,
+        percent: 100
+      });
       return { model: session, config };
     } catch (err) {
       console.warn('Direct ONNX load error:', err);
@@ -465,48 +539,97 @@ export async function detectObjects(videoElement, minScore = 0.35, activeClasses
       const output = await onnxSession.run({ [inputName]: inputTensor });
       const outputTensor = output[onnxSession.outputNames[0]];
 
-      if (outputTensor && outputTensor.data) {
-        // Output tensor shape is typically [1, 4 + 365, 8400] for YOLOv8/11
-        const data = outputTensor.data;
-        const dims = outputTensor.dims; // e.g. [1, 369, 8400]
-        const numClasses = 365;
-        const numAttributes = dims[1] || 369;
-        const numBoxes = dims[2] || 8400;
+      let data = null;
+      if (outputTensor) {
+        if (typeof outputTensor.getData === 'function') {
+          data = await outputTensor.getData();
+        } else {
+          data = outputTensor.data;
+        }
+      }
 
+      if (data) {
+        const numClasses = 365;
+        const numBoxes = 8400;
         const scaleX = videoElement.videoWidth / inputWidth;
         const scaleY = videoElement.videoHeight / inputHeight;
 
-        for (let b = 0; b < numBoxes; b += 8) { // Sample anchors for high responsiveness
-          let maxScore = 0;
-          let bestClassId = 0;
-
+        // Determine target class indices from activeClasses filter
+        let targetClassIndices = [];
+        if (activeClasses && activeClasses.size > 0) {
           for (let c = 0; c < numClasses; c++) {
-            const score = data[(4 + c) * numBoxes + b];
-            if (score > maxScore) {
-              maxScore = score;
-              bestClassId = c;
+            const raw = OBJECTS365_CLASSES[c];
+            if (raw && (activeClasses.has(raw) || activeClasses.has(raw.toLowerCase()))) {
+              targetClassIndices.push(c);
             }
           }
+        }
+        if (targetClassIndices.length === 0) {
+          for (let c = 0; c < numClasses; c++) {
+            targetClassIndices.push(c);
+          }
+        }
 
-          if (maxScore >= minScore) {
-            const rawClass = OBJECTS365_CLASSES[bestClassId] || `Class ${bestClassId}`;
-            const className = rawClass.toLowerCase();
+        const candidates = [];
 
-            if (!activeClasses || activeClasses.has(rawClass) || activeClasses.has(className)) {
-              const cx = data[0 * numBoxes + b] * scaleX;
-              const cy = data[1 * numBoxes + b] * scaleY;
-              const w = data[2 * numBoxes + b] * scaleX;
-              const h = data[3 * numBoxes + b] * scaleY;
+        // Fast contiguous memory scan per class
+        for (let i = 0; i < targetClassIndices.length; i++) {
+          const c = targetClassIndices[i];
+          const offset = (4 + c) * numBoxes;
+          for (let b = 0; b < numBoxes; b++) {
+            const score = data[offset + b];
+            if (score >= minScore) {
+              candidates.push({ b, classId: c, score });
+            }
+          }
+        }
 
+        if (candidates.length > 0) {
+          // Sort candidates descending by confidence score
+          candidates.sort((a, b) => b.score - a.score);
+
+          // Non-Maximum Suppression (NMS) with IoU threshold 0.45
+          const selected = [];
+          const boxes = [];
+
+          for (let i = 0; i < candidates.length && selected.length < 30; i++) {
+            const cand = candidates[i];
+            const b = cand.b;
+            const cx = data[0 * numBoxes + b] * scaleX;
+            const cy = data[1 * numBoxes + b] * scaleY;
+            const w = data[2 * numBoxes + b] * scaleX;
+            const h = data[3 * numBoxes + b] * scaleY;
+            const x = Math.max(0, cx - w / 2);
+            const y = Math.max(0, cy - h / 2);
+
+            let overlap = false;
+            for (let j = 0; j < selected.length; j++) {
+              if (selected[j].classId === cand.classId) {
+                const prev = boxes[j];
+                const x1 = Math.max(x, prev[0]);
+                const y1 = Math.max(y, prev[1]);
+                const x2 = Math.min(x + w, prev[0] + prev[2]);
+                const y2 = Math.min(y + h, prev[1] + prev[3]);
+                const interW = Math.max(0, x2 - x1);
+                const interH = Math.max(0, y2 - y1);
+                const interArea = interW * interH;
+                const unionArea = (w * h) + (prev[2] * prev[3]) - interArea;
+                const iou = unionArea > 0 ? interArea / unionArea : 0;
+
+                if (iou > 0.45) {
+                  overlap = true;
+                  break;
+                }
+              }
+            }
+
+            if (!overlap) {
+              selected.push(cand);
+              boxes.push([x, y, w, h]);
               results.push({
-                class: rawClass,
-                score: maxScore,
-                bbox: [
-                  Math.max(0, cx - w / 2),
-                  Math.max(0, cy - h / 2),
-                  w,
-                  h
-                ]
+                class: OBJECTS365_CLASSES[cand.classId] || `Class ${cand.classId}`,
+                score: cand.score,
+                bbox: [x, y, w, h]
               });
             }
           }

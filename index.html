@@ -232,6 +232,17 @@
     </footer>
   </div>
 
+  <!-- Service Worker Registration for CacheStorage Acceleration -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(err => {
+          console.warn('[SW] ServiceWorker registration ignored:', err);
+        });
+      });
+    }
+  </script>
+
   <!-- Main Application Script (ES Module) -->
   <script type="module" src="app.js"></script>
 </body>
