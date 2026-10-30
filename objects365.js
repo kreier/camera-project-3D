@@ -1,7 +1,7 @@
 /**
  * objects365.js - Objects365 Class Directory and Guidance Presets
  * Synchronized with Objects365 v1/v2 YOLO11 taxonomy (365 categories)
- * Part of Camera-Project-3D (Version v0.1.2)
+ * Part of Camera-Project-3D (Version v0.1.3)
  */
 
 export const OBJECTS365_CLASSES = [

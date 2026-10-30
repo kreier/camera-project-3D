@@ -24,26 +24,24 @@ The repository includes:
 
 ## 🚀 Key Features
 
-- ⚡ **Ultra-Fast Instant Startup**: Automatically boots with the lightest available model (`MobileNet v2 Lite`, ~2.5 MB), achieving immediate real-time video streaming without waiting for massive weights to download.
+- ⚡ **Ultra-Fast Instant Startup**: Boots with `MobileNet v2 Lite` (~17.7 MB) accelerated by browser `CacheStorage` for instant sub-second reload on return visits.
 - 🌐 **Dataset Switcher (COCO & Objects365)**: Toggle between standard **COCO (80 classes)** and the massive **Objects365 (365 classes)** dataset with a single click.
 - 🔄 **On-Demand Browser Model Switching**:
   
   #### COCO Models (80 Classes)
   | Model | Size | Engine | Latency (approx) | Best For |
   | :--- | :--- | :--- | :--- | :--- |
-  | **MobileNet v2 Lite** *(Default)* | ~2.5 MB | TensorFlow.js / WebGL | 15–30 ms | Instant boot, low memory, mobile devices |
-  | **MobileNet v2 Standard** | ~5.5 MB | TensorFlow.js / WebGL | 30–50 ms | Balanced precision & bounding box stability |
-  | **MobileNet v1 Deep** | ~27.0 MB | TensorFlow.js / WebGL | 60–90 ms | High-accuracy detection in crowded scenes |
-  | **MediaPipe EfficientDet-Lite0** | ~4.4 MB | MediaPipe / WebAssembly | 25–45 ms | EfficientNet mobile architecture |
-  | **MediaPipe EfficientDet-Lite2** | ~7.2 MB | MediaPipe / WebAssembly | 45–75 ms | High-resolution (448×448) small-object detection |
+  | **MobileNet v2 Lite** *(Default)* | ~17.7 MB | TensorFlow.js / WebGL + CacheStorage | 15–30 ms | Instant startup, mobile devices, low memory |
+  | **MobileNet v2 Standard** | ~64.6 MB | TensorFlow.js / WebGL | 30–50 ms | Standard 17-shard model, stable bounding boxes |
+  | **MobileNet v1 Deep** | ~26.3 MB | TensorFlow.js / WebGL | 60–90 ms | High-accuracy detection in crowded scenes |
+  | **MediaPipe EfficientDet-Lite0** | ~6.9 MB | MediaPipe / WebAssembly | 25–45 ms | EfficientNet mobile vision architecture |
+  | **MediaPipe EfficientDet-Lite2** | ~11.6 MB | MediaPipe / WebAssembly | 45–75 ms | High-resolution (448×448) fine-grained detection |
 
-  #### Objects365 Models (365 Classes - Larger & More Sophisticated)
+  #### Objects365 Models (365 Classes - Rich Daily Vocabulary)
   | Model | Size | Engine | Latency (approx) | Best For |
   | :--- | :--- | :--- | :--- | :--- |
-  | **YOLO11s-O365 (Full FP32)** *(Default)* | ~38.5 MB | ONNX Runtime Web / WebGPU + WASM | 45–80 ms | High-precision predictions across all 365 classes with broad browser compatibility |
-  | **YOLO11s-O365 (FP16 Edge)** | ~19.3 MB | ONNX Runtime Web / WebGPU | 25–45 ms | Fast edge inference on 365 categories (Requires WebGPU) |
-  | **LW-DETR Objects365 (Transformer)** | ~56.0 MB | ONNX Runtime Web / WASM | 90–140 ms | Deformable attention transformer, eliminates NMS |
-  | **Co-DETR / YOLOv8x O365 (Extra-Large SOTA)** | ~136.0 MB | High-Performance ONNX / Edge | 180–260 ms | Maximum precision for small objects (keys, stairs, power outlets) |
+  | **YOLO11s-O365 (Full FP32)** *(Default)* | ~36.7 MB | ONNX Runtime Web / Multi-Threaded WASM SIMD | 60–90 ms | Flagship Ultralytics YOLO11 model in full precision across all 365 categories |
+  | **D-FINE-S O365 (Quantized INT8)** | ~10.8 MB | ONNX Runtime Web / Multi-Threaded WASM | 30–55 ms | Ultra-compact end-to-end vision transformer for instant mobile loading |
 
 - 🎯 **Target Class Filtering & Presets**:
   - **COCO Presets**: Top 10 Focus Classes (`person`, `cell phone`, `book`, `car`, `cat`, `dog`, `chair`, `bottle`, `laptop`, `bicycle`), Assistive Obstacles, and All 80 classes.

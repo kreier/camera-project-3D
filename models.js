@@ -1,7 +1,7 @@
 /**
  * models.js - Dual Dataset & Multi-Model Inference Engine
  * Supports COCO (80 classes) and Objects365 (365 classes)
- * Part of Camera-Project-3D (Version v0.1.2)
+ * Part of Camera-Project-3D (Version v0.1.3)
  */
 
 import { OBJECTS365_CLASSES, OBJECTS365_PRESETS } from './objects365.js';
@@ -63,10 +63,10 @@ export const DATASETS = {
         name: 'MobileNet v2 Lite (Ultra Fast)',
         family: 'tensorflow',
         base: 'lite_mobilenet_v2',
-        sizeMB: 18.5,
+        sizeMB: 17.7,
         speed: 'Ultra Fast (~15-30ms)',
         accuracy: 'Good (Mobile-Optimized)',
-        description: 'Lightweight MobileNet v2 detector (~18.5 MB total weights). Starts by default with CacheStorage acceleration.',
+        description: 'Lightweight MobileNet v2 detector (~17.7 MB). Starts by default with CacheStorage instant reload.',
         recommended: true,
         isDefault: true
       },
@@ -76,10 +76,10 @@ export const DATASETS = {
         name: 'MobileNet v2 Standard',
         family: 'tensorflow',
         base: 'mobilenet_v2',
-        sizeMB: 18.5,
+        sizeMB: 64.6,
         speed: 'Fast (~30-50ms)',
         accuracy: 'Very Good',
-        description: 'Balanced speed and precision with stable bounding boxes.',
+        description: 'Standard MobileNet v2 detector with 17 weight shards (~64.6 MB). Stable bounding boxes.',
         recommended: false,
         isDefault: false
       },
@@ -89,10 +89,10 @@ export const DATASETS = {
         name: 'MobileNet v1 Deep',
         family: 'tensorflow',
         base: 'mobilenet_v1',
-        sizeMB: 27.0,
+        sizeMB: 26.3,
         speed: 'Moderate (~60-90ms)',
         accuracy: 'High Accuracy',
-        description: 'Deeper feature extraction for challenging crowded scenes.',
+        description: 'Deeper feature extraction with 7 weight shards (~26.3 MB) for challenging crowded scenes.',
         recommended: false,
         isDefault: false
       },
@@ -102,10 +102,10 @@ export const DATASETS = {
         name: 'MediaPipe EfficientDet-Lite0',
         family: 'mediapipe',
         modelUrl: 'https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite',
-        sizeMB: 4.4,
+        sizeMB: 6.9,
         speed: 'Fast (~25-45ms)',
         accuracy: 'High (EfficientNet)',
-        description: "Google's lightweight vision detector running via WebAssembly and WebGL delegate.",
+        description: "Google MediaPipe EfficientDet vision detector (~6.9 MB) via WASM and WebGL delegate.",
         recommended: false,
         isDefault: false
       },
@@ -115,10 +115,10 @@ export const DATASETS = {
         name: 'MediaPipe EfficientDet-Lite2',
         family: 'mediapipe',
         modelUrl: 'https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite2/float16/1/efficientdet_lite2.tflite',
-        sizeMB: 7.2,
+        sizeMB: 11.6,
         speed: 'Moderate (~45-75ms)',
         accuracy: 'Very High (448x448 input)',
-        description: 'Higher resolution input model for fine-grained detection of small objects.',
+        description: 'Higher resolution input MediaPipe detector (~11.6 MB) for fine-grained small object recognition.',
         recommended: false,
         isDefault: false
       }
@@ -141,12 +141,25 @@ export const DATASETS = {
         name: 'YOLO11s-O365 (Full FP32)',
         family: 'onnx',
         modelUrl: 'https://huggingface.co/wide-video/yoloe-11-Objects365-v1.0.0/resolve/main/yoloe-11s-seg-object365.onnx',
-        sizeMB: 38.5,
+        sizeMB: 36.7,
         speed: 'Fast (~60-90ms)',
         accuracy: 'Very High (365 Categories)',
-        description: 'Full FP32 precision vision model running via multi-threaded WASM with SIMD across all 365 categories.',
+        description: 'Flagship Ultralytics YOLO11 model in full FP32 precision (~36.7 MB) with multi-threaded WASM SIMD.',
         recommended: true,
         isDefault: true
+      },
+      {
+        id: 'dfine_s_o365_int8',
+        dataset: 'objects365',
+        name: 'D-FINE-S O365 (Quantized INT8)',
+        family: 'onnx',
+        modelUrl: 'https://huggingface.co/onnx-community/dfine_s_obj365-ONNX/resolve/main/onnx/model_int8.onnx',
+        sizeMB: 10.8,
+        speed: 'Ultra Fast (~30-55ms)',
+        accuracy: 'High (End-to-End DETR)',
+        description: 'Ultra-compact vision transformer (~10.8 MB) with INT8 quantization for instant loading on low-power devices.',
+        recommended: false,
+        isDefault: false
       }
     ]
   }
@@ -542,6 +555,62 @@ export async function detectObjects(videoElement, minScore = 0.35, activeClasses
       const inputTensor = new window.ort.Tensor('float32', floatData, [1, 3, inputHeight, inputWidth]);
       const inputName = onnxSession.inputNames[0] || 'images';
       const output = await onnxSession.run({ [inputName]: inputTensor });
+      // A) D-FINE / DETR Format (logits: [1, 300, 366], pred_boxes: [1, 300, 4])
+      if (output['logits'] && output['pred_boxes']) {
+        const logitsTensor = output['logits'];
+        const boxesTensor = output['pred_boxes'];
+        const logits = logitsTensor.data || (logitsTensor.getData ? await logitsTensor.getData() : null);
+        const boxData = boxesTensor.data || (boxesTensor.getData ? await boxesTensor.getData() : null);
+
+        if (logits && boxData) {
+          const numQueries = 300;
+          const numClassesWithBg = 366;
+          const scaleX = videoElement.videoWidth || inputWidth;
+          const scaleY = videoElement.videoHeight || inputHeight;
+
+          for (let q = 0; q < numQueries; q++) {
+            const logitOffset = q * numClassesWithBg;
+            let maxScore = 0;
+            let bestClass = 0;
+
+            for (let c = 0; c < 365; c++) {
+              const l = logits[logitOffset + 1 + c];
+              const s = 1.0 / (1.0 + Math.exp(-l));
+              if (s > maxScore) {
+                maxScore = s;
+                bestClass = c;
+              }
+            }
+
+            if (maxScore >= minScore) {
+              const rawClass = OBJECTS365_CLASSES[bestClass];
+              if (!activeClasses || activeClasses.has(rawClass) || activeClasses.has(rawClass.toLowerCase())) {
+                const boxOffset = q * 4;
+                const cx = boxData[boxOffset] * scaleX;
+                const cy = boxData[boxOffset + 1] * scaleY;
+                const w = boxData[boxOffset + 2] * scaleX;
+                const h = boxData[boxOffset + 3] * scaleY;
+
+                if (w > 8 && h > 8 && !isNaN(w) && !isNaN(h)) {
+                  results.push({
+                    class: rawClass || `Class ${bestClass}`,
+                    score: maxScore,
+                    bbox: [
+                      Math.max(0, cx - w / 2),
+                      Math.max(0, cy - h / 2),
+                      w,
+                      h
+                    ]
+                  });
+                }
+              }
+            }
+          }
+        }
+        return results;
+      }
+
+      // B) YOLO Output Format (output0: [1, 4 + 365, 8400])
       const outputTensor = output[onnxSession.outputNames[0]];
 
       let data = null;

@@ -1,6 +1,6 @@
 {
   "name": "camera-project-3d",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Browser-based real-time object detection with COCO and Objects365 models for assistive vision and 3D guidance.",
   "main": "app.js",
   "scripts": {
