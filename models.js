@@ -141,6 +141,7 @@ export const DATASETS = {
         name: 'YOLO11s-O365 (Full FP32)',
         family: 'onnx',
         modelUrl: 'https://huggingface.co/wide-video/yoloe-11-Objects365-v1.0.0/resolve/main/yoloe-11s-seg-object365.onnx',
+        fallbackUrl: 'https://huggingface.co/wide-video/yoloe-11-Objects365-v1.0.0/raw/main/yoloe-11s-seg-object365.onnx',
         sizeMB: 36.7,
         speed: 'Fast (~60-90ms)',
         accuracy: 'Very High (365 Categories)',
@@ -149,15 +150,30 @@ export const DATASETS = {
         isDefault: true
       },
       {
-        id: 'dfine_s_o365_int8',
+        id: 'dfine_s_o365_q4',
         dataset: 'objects365',
-        name: 'D-FINE-S O365 (Quantized INT8)',
+        name: 'D-FINE-S O365 (Quantized Q4)',
         family: 'onnx',
-        modelUrl: 'https://huggingface.co/onnx-community/dfine_s_obj365-ONNX/resolve/main/onnx/model_int8.onnx',
-        sizeMB: 10.8,
+        modelUrl: 'https://huggingface.co/onnx-community/dfine_s_obj365-ONNX/resolve/main/onnx/model_q4.onnx',
+        fallbackUrl: 'https://huggingface.co/onnx-community/dfine_s_obj365-ONNX/raw/main/onnx/model_q4.onnx',
+        sizeMB: 23.1,
         speed: 'Ultra Fast (~30-55ms)',
         accuracy: 'High (End-to-End DETR)',
-        description: 'Ultra-compact vision transformer (~10.8 MB) with INT8 quantization for instant loading on low-power devices.',
+        description: 'Vision transformer (~23.1 MB) with block quantization running end-to-end without unsupported integer ops.',
+        recommended: false,
+        isDefault: false
+      },
+      {
+        id: 'dfine_s_o365_fp32',
+        dataset: 'objects365',
+        name: 'D-FINE-S O365 (Full FP32)',
+        family: 'onnx',
+        modelUrl: 'https://huggingface.co/onnx-community/dfine_s_obj365-ONNX/resolve/main/onnx/model.onnx',
+        fallbackUrl: 'https://huggingface.co/onnx-community/dfine_s_obj365-ONNX/raw/main/onnx/model.onnx',
+        sizeMB: 40.2,
+        speed: 'Fast (~50-80ms)',
+        accuracy: 'Very High (End-to-End DETR)',
+        description: 'Full precision FP32 vision transformer (~40.2 MB) with 300 queries, maximum detection fidelity, and zero quantization loss.',
         recommended: false,
         isDefault: false
       }
@@ -355,47 +371,74 @@ export async function loadModel(modelId, onProgress = () => {}) {
         }
       }
 
-      // 2. Fetch from network if not in cache
+      // 2. Fetch from network if not in cache (with automatic fallback to alternative download point)
       if (!modelBuffer) {
-        onProgress({ status: 'downloading', text: `Downloading ${config.name} (${config.sizeMB} MB)...`, percent: 20 });
-        const response = await fetch(config.modelUrl);
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status} when fetching ONNX weights from Hugging Face`);
+        const candidateUrls = [config.modelUrl];
+        if (config.fallbackUrl && config.fallbackUrl !== config.modelUrl) {
+          candidateUrls.push(config.fallbackUrl);
         }
 
-        const contentLength = +response.headers.get('Content-Length') || (config.sizeMB * 1024 * 1024);
-        const reader = response.body.getReader();
-        let receivedBytes = 0;
-        const chunks = [];
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          chunks.push(value);
-          receivedBytes += value.length;
-          const pct = Math.min(90, Math.round((receivedBytes / contentLength) * 100));
-          onProgress({
-            status: 'downloading',
-            text: `Downloading ${config.name}: ${(receivedBytes / (1024 * 1024)).toFixed(1)} / ${(contentLength / (1024 * 1024)).toFixed(1)} MB (${pct}%)`,
-            percent: pct
-          });
-        }
-
-        modelBuffer = new Uint8Array(receivedBytes);
-        let offset = 0;
-        for (const chunk of chunks) {
-          modelBuffer.set(chunk, offset);
-          offset += chunk.length;
-        }
-
-        // Save to CacheStorage for next visit
-        if (window.caches) {
+        let lastFetchError = null;
+        for (let u = 0; u < candidateUrls.length; u++) {
+          const targetUrl = candidateUrls[u];
+          const isFallback = u > 0;
           try {
-            const cache = await window.caches.open(CACHE_NAME);
-            cache.put(config.modelUrl, new Response(modelBuffer.slice(0), {
-              headers: { 'Content-Type': 'application/octet-stream' }
-            })).catch(e => console.warn('[CacheStorage] Put error:', e));
-          } catch (_) {}
+            onProgress({
+              status: 'downloading',
+              text: isFallback
+                ? `Primary mirror unavailable, trying alternative download point...`
+                : `Downloading ${config.name} (${config.sizeMB} MB)...`,
+              percent: 20
+            });
+
+            const response = await fetch(targetUrl);
+            if (!response.ok) {
+              throw new Error(`HTTP ${response.status} when fetching ONNX weights from ${targetUrl}`);
+            }
+
+            const contentLength = +response.headers.get('Content-Length') || (config.sizeMB * 1024 * 1024);
+            const reader = response.body.getReader();
+            let receivedBytes = 0;
+            const chunks = [];
+
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              chunks.push(value);
+              receivedBytes += value.length;
+              const pct = Math.min(90, Math.round((receivedBytes / contentLength) * 100));
+              onProgress({
+                status: 'downloading',
+                text: `Downloading ${config.name}: ${(receivedBytes / (1024 * 1024)).toFixed(1)} / ${(contentLength / (1024 * 1024)).toFixed(1)} MB (${pct}%)`,
+                percent: pct
+              });
+            }
+
+            modelBuffer = new Uint8Array(receivedBytes);
+            let offset = 0;
+            for (const chunk of chunks) {
+              modelBuffer.set(chunk, offset);
+              offset += chunk.length;
+            }
+
+            // Save to CacheStorage under primary URL for next visit
+            if (window.caches) {
+              try {
+                const cache = await window.caches.open(CACHE_NAME);
+                cache.put(config.modelUrl, new Response(modelBuffer.slice(0), {
+                  headers: { 'Content-Type': 'application/octet-stream' }
+                })).catch(e => console.warn('[CacheStorage] Put error:', e));
+              } catch (_) {}
+            }
+            break; // Download succeeded
+          } catch (fetchErr) {
+            console.warn(`[Download] Failed fetching from ${targetUrl}:`, fetchErr);
+            lastFetchError = fetchErr;
+          }
+        }
+
+        if (!modelBuffer) {
+          throw new Error(`Failed to download ${config.name} from all available download points. ${lastFetchError ? lastFetchError.message : ''}`);
         }
       }
 
@@ -458,7 +501,7 @@ export async function loadModel(modelId, onProgress = () => {}) {
       return { model: session, config };
     } catch (err) {
       console.warn('Direct ONNX load error:', err);
-      throw new Error(`ONNX model error: ${err.message}. If using remote CDN, ensure network connectivity.`);
+      throw new Error(`ONNX model error: ${err.message}`);
     }
   }
 

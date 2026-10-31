@@ -41,7 +41,8 @@ The repository includes:
   | Model | Size | Engine | Latency (approx) | Best For |
   | :--- | :--- | :--- | :--- | :--- |
   | **YOLO11s-O365 (Full FP32)** *(Default)* | ~36.7 MB | ONNX Runtime Web / Multi-Threaded WASM SIMD | 60–90 ms | Flagship Ultralytics YOLO11 model in full precision across all 365 categories |
-  | **D-FINE-S O365 (Quantized INT8)** | ~10.8 MB | ONNX Runtime Web / Multi-Threaded WASM | 30–55 ms | Ultra-compact end-to-end vision transformer for instant mobile loading |
+  | **D-FINE-S O365 (Quantized Q4)** | ~23.1 MB | ONNX Runtime Web / Multi-Threaded WASM SIMD | 30–55 ms | Compact end-to-end vision transformer with block quantization and zero integer op conflicts |
+  | **D-FINE-S O365 (Full FP32)** | ~40.2 MB | ONNX Runtime Web / Multi-Threaded WASM SIMD | 50–80 ms | Full-precision DETR transformer with 300 query slots and maximum detection fidelity |
 
 - 🎯 **Target Class Filtering & Presets**:
   - **COCO Presets**: Top 10 Focus Classes (`person`, `cell phone`, `book`, `car`, `cat`, `dog`, `chair`, `bottle`, `laptop`, `bicycle`), Assistive Obstacles, and All 80 classes.
